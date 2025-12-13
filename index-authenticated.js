@@ -28,6 +28,40 @@ async function loadCookies() {
   }
 }
 
+// Check if cookies are expired or about to expire
+function areCookiesExpiring(cookies, bufferMinutes = 10) {
+  if (!cookies || cookies.length === 0) return true;
+  
+  const now = Date.now() / 1000; // Convert to seconds
+  const bufferSeconds = bufferMinutes * 60;
+  
+  // Check critical Google auth cookies
+  const criticalCookies = cookies.filter(c => 
+    c.name.includes('SIDTS') || 
+    c.name.includes('SIDCC') ||
+    c.name === '__Secure-1PSID' ||
+    c.name === '__Secure-3PSID'
+  );
+  
+  if (criticalCookies.length === 0) {
+    console.log('⚠️  No critical auth cookies found');
+    return true;
+  }
+  
+  for (const cookie of criticalCookies) {
+    if (cookie.expirationDate) {
+      const timeUntilExpiry = cookie.expirationDate - now;
+      if (timeUntilExpiry < bufferSeconds) {
+        const minutesLeft = Math.floor(timeUntilExpiry / 60);
+        console.log(`⏰ Cookie ${cookie.name} expires in ${minutesLeft} minutes`);
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
 // Save cookies to file
 async function saveCookies(cookies) {
   try {
@@ -91,10 +125,22 @@ async function pingIDXWorkspace() {
     
     // Load saved cookies if available
     const cookies = await loadCookies();
+    
     if (cookies) {
       await page.setCookie(...cookies);
       console.log(`✓ Loaded saved cookies (${cookies.length} cookies)`);
+      
+      // Check if cookies are expiring soon (for logging purposes)
+      if (areCookiesExpiring(cookies)) {
+        console.log('⚠️  Cookies are expiring soon, will refresh from Google');
+      }
+    } else {
+      console.log('No saved cookies found, authentication required');
     }
+    
+    // Always refresh cookies on every ping for maximum reliability
+    // Google's session tokens expire server-side regardless of cookie dates
+    const needsRefresh = true;
     
     console.log(`Navigating to ${CONFIG.IDX_WORKSPACE_URL}...`);
     
@@ -160,10 +206,18 @@ async function pingIDXWorkspace() {
       if (url.includes('idx.google.com') && !url.includes('login')) {
         console.log('✓ Workspace is alive and authenticated!');
         
-        // Save/update cookies
+        // Always get fresh cookies from Google to maintain active session
         const currentCookies = await page.cookies();
+        
+        // Verify we got fresh session tokens
+        if (areCookiesExpiring(currentCookies, 0)) {
+          console.warn('⚠️  Warning: Fresh cookies still appear to be expiring soon');
+        } else {
+          console.log('✓ Refreshed session tokens from Google');
+        }
+        
         await saveCookies(currentCookies);
-        console.log(`✓ Updated ${currentCookies.length} cookies`);
+        console.log(`✓ Saved ${currentCookies.length} cookies`);
         
         // Optional: Interact with the page to simulate activity
         try {
