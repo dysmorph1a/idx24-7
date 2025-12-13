@@ -9,7 +9,7 @@ primary_region = 'iad'
 [build]
 
 [env]
-  PING_INTERVAL_MS = '300000'
+  PING_INTERVAL_MS = '120000'
   HEADLESS = 'true'
   COOKIES_FILE = '/data/cookies.json'
 

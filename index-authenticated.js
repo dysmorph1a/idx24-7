@@ -6,7 +6,7 @@ const path = require('path');
 // Configuration
 const CONFIG = {
   IDX_WORKSPACE_URL: process.env.IDX_WORKSPACE_URL || 'https://your-workspace.idx.google.com',
-  PING_INTERVAL_MS: parseInt(process.env.PING_INTERVAL_MS) || 5 * 60 * 1000, // 5 minutes
+  PING_INTERVAL_MS: parseInt(process.env.PING_INTERVAL_MS) || 2 * 60 * 1000, // 2 minutes
   HEALTH_CHECK_PORT: parseInt(process.env.PORT) || 8080,
   COOKIES_FILE: process.env.COOKIES_FILE || '/data/cookies.json',
   HEADLESS: process.env.HEADLESS !== 'false',
@@ -105,7 +105,7 @@ async function pingIDXWorkspace() {
     });
     
     // Wait a bit for any redirects
-    await page.waitForTimeout(3000);
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     const url = page.url();
     const status = response.status();
@@ -120,6 +120,13 @@ async function pingIDXWorkspace() {
       console.error('   Set HEADLESS=false and run locally to login, then cookies will be saved.');
       console.error(`   Current URL: ${url}`);
       
+      // Alert for authentication failure
+      if (lastPingStatus === 'AUTH_REQUIRED') {
+        // Send alert via webhook, email, etc.
+        // For now, just log prominently
+        console.error('🚨 RE-AUTHENTICATION NEEDED! Cookies expired.');
+      }
+      
       // If not headless, wait for manual login
       if (!CONFIG.HEADLESS) {
         console.log('\n=== MANUAL LOGIN REQUIRED ===');
@@ -132,7 +139,7 @@ async function pingIDXWorkspace() {
         });
         
         // Wait for workspace to fully load
-        await page.waitForTimeout(5000);
+        await new Promise(resolve => setTimeout(resolve, 5000));
         
         // Save cookies after successful login
         const newCookies = await page.cookies();
