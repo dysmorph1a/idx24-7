@@ -1,6 +1,6 @@
 # IDX Keep-Alive Pinger
 
-A lightweight, always-on service that pings your Google IDX workspace to prevent idle timeout. Designed for deployment on free-tier platforms like Fly.io.
+A lightweight, always-on service that pings your Google IDX (idx.google.com/) workspace to prevent idle timeout. Designed for deployment on free-tier platforms like Fly.io.
 
 ## Features
 
