@@ -1,5 +1,6 @@
 const https = require('https');
 const http = require('http');
+const nodemailer = require('nodemailer');
 
 // Configuration
 const CONFIG = {
@@ -7,11 +8,60 @@ const CONFIG = {
   PING_INTERVAL_MS: parseInt(process.env.PING_INTERVAL_MS) || 5 * 60 * 1000, // 5 minutes default
   SESSION_COOKIE: process.env.IDX_SESSION_COOKIE || '', // Optional: Add session cookie if needed
   HEALTH_CHECK_PORT: parseInt(process.env.PORT) || 8080,
+  // Email configuration
+  EMAIL_ENABLED: process.env.EMAIL_ENABLED === 'true',
+  EMAIL_SERVICE: process.env.EMAIL_SERVICE || 'gmail',
+  EMAIL_USER: process.env.EMAIL_USER || '',
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || '',
+  EMAIL_RECIPIENT: process.env.EMAIL_RECIPIENT || '',
+  ERROR_EMAIL_THRESHOLD: parseInt(process.env.ERROR_EMAIL_THRESHOLD) || 3, // Send email after N consecutive errors
+  COOKIE_EXPIRY_WARNING_DAYS: parseInt(process.env.COOKIE_EXPIRY_WARNING_DAYS) || 7,
 };
 
 let pingCount = 0;
 let lastPingStatus = 'never pinged';
 let lastPingTime = null;
+let consecutiveErrors = 0;
+let emailAlertSent = false;
+let transporter = null;
+
+// Initialize email transporter
+function initializeEmail() {
+  if (CONFIG.EMAIL_ENABLED && CONFIG.EMAIL_USER && CONFIG.EMAIL_PASSWORD) {
+    transporter = nodemailer.createTransport({
+      service: CONFIG.EMAIL_SERVICE,
+      auth: {
+        user: CONFIG.EMAIL_USER,
+        pass: CONFIG.EMAIL_PASSWORD,
+      },
+    });
+    console.log('[EMAIL] Email notifications enabled');
+  } else if (CONFIG.EMAIL_ENABLED) {
+    console.warn('[EMAIL] Email enabled but credentials missing. Skipping email setup.');
+  }
+}
+
+// Send email notification
+async function sendEmailAlert(subject, htmlContent) {
+  if (!transporter || !CONFIG.EMAIL_RECIPIENT) {
+    console.warn('[EMAIL] Cannot send email: transporter not configured or no recipient');
+    return;
+  }
+
+  try {
+    const mailOptions = {
+      from: CONFIG.EMAIL_USER,
+      to: CONFIG.EMAIL_RECIPIENT,
+      subject: `[IDX Keep-Alive] ${subject}`,
+      html: htmlContent,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log('[EMAIL] Alert sent:', subject);
+  } catch (error) {
+    console.error('[EMAIL] Failed to send email:', error.message);
+  }
+}
 
 // Ping function
 function pingIDXWorkspace() {
@@ -46,22 +96,40 @@ function pingIDXWorkspace() {
       pingCount++;
       lastPingTime = new Date().toISOString();
       lastPingStatus = `HTTP ${res.statusCode}`;
+      consecutiveErrors = 0; // Reset error counter on success
+      emailAlertSent = false; // Reset email flag
       
       console.log(`[${lastPingTime}] Ping #${pingCount}: ${lastPingStatus} - ${CONFIG.IDX_WORKSPACE_URL}`);
       
       if (res.statusCode >= 200 && res.statusCode < 400) {
-        console.log(`✓ Workspace is alive`);
+        console.log(`[OK] Workspace is alive`);
       } else {
-        console.warn(`⚠ Unexpected status code: ${res.statusCode}`);
+        console.warn(`[WARNING] Unexpected status code: ${res.statusCode}`);
       }
     });
   });
 
-  req.on('error', (error) => {
+  req.on('error', async (error) => {
     pingCount++;
     lastPingTime = new Date().toISOString();
     lastPingStatus = `ERROR: ${error.message}`;
+    consecutiveErrors++;
     console.error(`[${lastPingTime}] Ping #${pingCount} failed:`, error.message);
+
+    // Send email alert after threshold of consecutive errors
+    if (consecutiveErrors >= CONFIG.ERROR_EMAIL_THRESHOLD && !emailAlertSent && transporter) {
+      emailAlertSent = true;
+      const htmlContent = `
+        <h2>IDX Workspace Service Alert</h2>
+        <p>Your IDX workspace keep-alive service is experiencing issues.</p>
+        <p><strong>Error:</strong> ${error.message}</p>
+        <p><strong>Consecutive Errors:</strong> ${consecutiveErrors}</p>
+        <p><strong>Workspace:</strong> ${CONFIG.IDX_WORKSPACE_URL}</p>
+        <p><strong>Time:</strong> ${lastPingTime}</p>
+        <p>Please check your workspace connectivity and cookies.</p>
+      `;
+      await sendEmailAlert('Service Failure Alert', htmlContent);
+    }
   });
 
   req.on('timeout', () => {
@@ -100,7 +168,11 @@ server.listen(CONFIG.HEALTH_CHECK_PORT, () => {
   console.log(`Ping interval: ${CONFIG.PING_INTERVAL_MS / 1000}s (${CONFIG.PING_INTERVAL_MS / 60000} minutes)`);
   console.log(`Health check: http://localhost:${CONFIG.HEALTH_CHECK_PORT}/health`);
   console.log(`Using session cookie: ${CONFIG.SESSION_COOKIE ? 'Yes' : 'No'}`);
+  console.log(`Email alerts: ${CONFIG.EMAIL_ENABLED ? 'Enabled' : 'Disabled'}`);
   console.log(`=====================================\n`);
+
+  // Initialize email
+  initializeEmail();
 
   // Initial ping
   pingIDXWorkspace();

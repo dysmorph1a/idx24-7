@@ -5,9 +5,11 @@ A lightweight, always-on service that pings your Google IDX ([idx.google.com](ht
 ## Features
 
 - 🔄 Periodic HTTP pings to keep IDX workspace alive
+- 📧 **Email alerts** for service failures and cookie expiry
 - 🏥 Built-in health check endpoint for monitoring
 - 🔐 Optional session cookie authentication
 - 📊 Ping statistics and status tracking
+- 🍪 Cookie expiry monitoring and analysis
 - 🐳 Docker-ready with Fly.io configuration
 - ⚡ Ultra-lightweight (< 70MB container)
 
@@ -44,6 +46,7 @@ A lightweight, always-on service that pings your Google IDX ([idx.google.com](ht
 **Choose your platform:**
 - 📘 **[Render.com Deployment Guide](RENDER.md)** - Easiest setup with web UI
 - 📗 **[Fly.io Deployment Guide](DEPLOY.md)** - CLI-based deployment
+- 🟠 **[Koyeb Deployment Guide](KOYEB.md)** - GitHub integration option
 
 #### Quick Deploy to Fly.io
 
@@ -87,6 +90,37 @@ A lightweight, always-on service that pings your Google IDX ([idx.google.com](ht
    fly logs
    ```
 
+#### Quick Deploy to Koyeb
+
+1. **Go to Koyeb Dashboard:**
+   Navigate to https://app.koyeb.com/
+
+2. **Create Service:**
+   Click "Create Service" and choose GitHub or Docker
+
+3. **Configure Service:**
+   - Repository: Your GitHub repo
+   - Build: `npm install`
+   - Run: `node index-authenticated.js`
+   - Region: Choose closest to you
+
+4. **Encode your cookies:**
+   ```bash
+   .\encode-cookies.ps1
+   ```
+   Copy the base64 string
+
+5. **Add Environment Variables:**
+   - `GOOGLE_COOKIES_BASE64` = [your base64 string] (mark as Secret)
+   - `IDX_WORKSPACE_URL` = https://your-workspace.idx.google.com
+   - `HEADLESS` = true
+   - `PORT` = 8080
+
+6. **Deploy:**
+   Submit and Koyeb will auto-deploy
+
+See [KOYEB.md](KOYEB.md) for detailed instructions.
+
 ## Configuration
 
 Configure via environment variables:
@@ -97,6 +131,115 @@ Configure via environment variables:
 | `PING_INTERVAL_MS` | Ping interval in milliseconds | 300000 (5 min) |
 | `IDX_SESSION_COOKIE` | Session cookie for authenticated requests | - |
 | `PORT` | Health check server port | 8080 |
+| `EMAIL_ENABLED` | Enable email alerts (new) | false |
+| `EMAIL_SERVICE` | Email provider: gmail, outlook, etc | gmail |
+| `EMAIL_USER` | Sender email address | - |
+| `EMAIL_PASSWORD` | Email app password | - |
+| `EMAIL_RECIPIENT` | Email recipient for alerts | - |
+| `ERROR_EMAIL_THRESHOLD` | Errors before sending alert | 3 |
+| `COOKIE_EXPIRY_WARNING_DAYS` | Days before warning about expiry | 7 |
+
+## Email Notifications (NEW!)
+
+Get alerts for service failures and cookie expiry issues:
+
+### Quick Setup (5 minutes)
+
+1. **Get Gmail App Password:**
+   - Enable 2FA at https://myaccount.google.com/security
+   - Generate app password at https://myaccount.google.com/apppasswords
+   - Copy the 16-character password
+
+2. **Add Email Variables:**
+   ```bash
+   # Fly.io example:
+   fly secrets set EMAIL_ENABLED=true
+   fly secrets set EMAIL_SERVICE=gmail
+   fly secrets set EMAIL_USER=your-email@gmail.com
+   fly secrets set EMAIL_PASSWORD=your-app-password
+   fly secrets set EMAIL_RECIPIENT=your-email@gmail.com
+   fly secrets set ERROR_EMAIL_THRESHOLD=3
+   fly deploy
+   ```
+
+3. **Verify in logs:**
+   ```bash
+   fly logs | grep EMAIL
+   # Should see: [EMAIL] Email notifications enabled
+   ```
+
+### What You'll Get
+
+- 📧 **Service Failure Alerts** - Email after 3 consecutive ping errors
+- 🍪 **Cookie Expiry Warnings** - Know when cookies need updating
+- 📊 **Detailed Reports** - Error messages, timestamps, next steps
+
+### Check Cookie Status
+
+```bash
+node check-cookie-expiry.js
+```
+
+Shows: Expired 🔴 | Expiring Soon 🟡 | Healthy 🟢
+
+### Monitor Cookies on Schedule
+
+```bash
+node cookie-monitor.js
+```
+
+Can be run manually or scheduled as cron job/Windows Task.
+
+### Encode Cookies with Email
+
+```powershell
+# Encode to base64
+.\encode-cookies.ps1
+
+# Send via email
+.\encode-cookies.ps1 -EmailAddress "your@email.com" -SendEmail
+```
+
+### Full Documentation
+
+For detailed setup, troubleshooting, and advanced options:
+- 📖 **[START_HERE.md](START_HERE.md)** - Overview
+- 📖 **[EMAIL_QUICKSTART.md](EMAIL_QUICKSTART.md)** - 5-minute guide
+- 📖 **[EMAIL_SETUP.md](EMAIL_SETUP.md)** - Detailed platform guides
+- 📖 **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Step-by-step
+
+## Cookie Management Tools
+
+New utilities for managing and monitoring cookies:
+
+### check-cookie-expiry.js
+Analyze your cookies.json file to see expiration dates:
+```bash
+node check-cookie-expiry.js
+```
+Output:
+- 🔴 **Expired** - Need immediate update
+- 🟡 **Expiring Soon** - Update within warning period
+- 🟢 **Healthy** - All good for now
+
+### cookie-monitor.js
+Monitor cookies and send email alerts:
+```bash
+node cookie-monitor.js
+```
+Can be scheduled as:
+- **Linux/Mac cron:** `0 9 * * * node /path/to/cookie-monitor.js`
+- **Windows Task Scheduler:** Run daily at 9 AM
+
+### encode-cookies.ps1 (Enhanced)
+Now supports email delivery:
+```powershell
+# Copy to clipboard
+.\encode-cookies.ps1
+
+# Email the encoded cookies
+.\encode-cookies.ps1 -EmailAddress "your@email.com" -SendEmail
+```
 
 ## Getting Your Session Cookie (if needed)
 
